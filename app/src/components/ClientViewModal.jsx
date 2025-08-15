@@ -427,7 +427,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { useSession } from "./SessionProvider";
 
 /** ---------- helpers ---------- */
 const fmtMD = (d) => {
@@ -489,7 +489,7 @@ function Collapse({ title, right, defaultOpen = true, children }) {
 }
 
 export default function ClientViewModal({ project, onClose }) {
-  const supabase = useMemo(() => createClientComponentClient(), []);
+  const { supabase } = useSession();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
