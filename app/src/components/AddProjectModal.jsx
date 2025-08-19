@@ -319,7 +319,7 @@ const handleExcelUpload = async (event) => {
       }
     });
     
-    console.log("Parsed Excel data:", data);
+    // Excel data parsed successfully
     
     // Create new form data object
     const newForm = { ...formData };
@@ -580,7 +580,7 @@ const handleExcelUpload = async (event) => {
       }
     }, 6000);
     
-    console.log("Form updated with:", { newForm, foundFields, missingFieldsList });
+    // Form updated with parsed data
     
   } catch (error) {
     console.error("Excel processing error:", error);
@@ -739,7 +739,7 @@ const handleCreateProject = async () => {
     }
     
     const project = await projRes.json();
-    console.log('Project created:', project);
+    // Project created successfully
 
     // Equipment creation and file uploads
     const stdEntries = Object.entries(equipmentData)
@@ -766,7 +766,7 @@ const handleCreateProject = async () => {
       });
       
       if (!eqRes.ok) {
-        console.error("Equipment creation failed for:", item.type);
+        // Equipment creation failed
         continue;
       }
       
@@ -806,9 +806,9 @@ const handleCreateProject = async () => {
               }),
             });
             
-            console.log(`✅ Uploaded equipment document: ${file.name}`);
+            // Equipment document uploaded successfully
           } else {
-            console.error(`❌ Failed to upload equipment document: ${file.name}`);
+            // Failed to upload equipment document
           }
         } catch (err) {
           console.error('Equipment file upload error:', err);
@@ -854,9 +854,9 @@ const handleCreateProject = async () => {
             }),
           });
           
-          console.log(`✅ Uploaded project document: ${file.name}`);
+          // Project document uploaded successfully
         } else {
-          console.error(`❌ Failed to upload project document: ${file.name}`);
+          // Failed to upload project document
         }
       } catch (err) {
         console.error('Project document upload error:', err);
@@ -894,9 +894,9 @@ const handleCreateProject = async () => {
               }),
             });
             
-            console.log(`✅ Uploaded other document: ${file.name}`);
+            // Other document uploaded successfully
           } else {
-            console.error(`❌ Failed to upload other document: ${file.name}`);
+            // Failed to upload other document
           }
         } catch (err) {
           console.error('Other document upload error:', err);

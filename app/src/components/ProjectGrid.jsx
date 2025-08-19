@@ -36,7 +36,7 @@ export default function ProjectGrid({ onProjectSelect, onProjectEdit, onClientVi
         await fetchAllProgress(projectsData);
       }
 
-      console.log('Fetched projects:', projectsData);
+      // Projects fetched successfully
     } catch (err) {
       console.error('Error fetching projects:', err);
       setError('Failed to load projects. Please try again.');
@@ -64,7 +64,7 @@ export default function ProjectGrid({ onProjectSelect, onProjectEdit, onClientVi
       }
 
       setProjectProgress(progressData);
-      console.log('Loaded progress data:', progressData);
+      // Progress data loaded successfully
     } catch (error) {
       console.error('Error fetching progress:', error);
       // Don't throw error here, let projects load without progress
@@ -141,7 +141,7 @@ export default function ProjectGrid({ onProjectSelect, onProjectEdit, onClientVi
         }
       }));
 
-      console.log('Progress updated locally:', updateData);
+      // Progress updated locally
 
       // Optionally refresh all progress data
       // await fetchAllProgress(projects);
@@ -154,7 +154,7 @@ export default function ProjectGrid({ onProjectSelect, onProjectEdit, onClientVi
   // Rest of your component code remains the same...
   const handleProjectUpdate = async (updatedProject) => {
     try {
-      console.log('Handling project update:', updatedProject);
+      // Handling project update
       setProjects(prev => prev.map(p =>
         p.id === updatedProject.id ? { ...p, ...updatedProject } : p
       ));
@@ -164,7 +164,7 @@ export default function ProjectGrid({ onProjectSelect, onProjectEdit, onClientVi
       }
 
       await fetchProjects();
-      console.log('Project update completed successfully');
+      // Project update completed successfully
     } catch (error) {
       console.error('Error in handleProjectUpdate:', error);
       await fetchProjects();
@@ -173,7 +173,7 @@ export default function ProjectGrid({ onProjectSelect, onProjectEdit, onClientVi
   };
 
   const handleProjectEdit = (project) => {
-    console.log('Opening edit modal for project:', project);
+    // Opening edit modal for project
     setEditModal({ isOpen: true, projectData: project });
   };
 
