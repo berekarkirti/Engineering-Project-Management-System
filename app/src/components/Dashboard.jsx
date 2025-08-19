@@ -10,6 +10,21 @@ import { AddProjectModal } from "./AddProjectModal"
 import ClientViewModal from "./ClientViewModal"
 import SalesOverview from "./SalesOverview"
 
+// Utility function to generate a valid UUID v4
+function generateUUID() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
+// Utility function to validate UUID format
+function isValidUUID(uuid) {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(uuid);
+}
+
 export default function Dashboard() {
   const [projects, setProjects] = useState([])
   const [filteredProjects, setFilteredProjects] = useState([])
@@ -19,6 +34,7 @@ export default function Dashboard() {
   const [showClientView, setShowClientView] = useState(false)
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
+  const [currentOrgId, setCurrentOrgId] = useState("")
   const [filters, setFilters] = useState({
     client: "",
     equipment: "",
@@ -26,18 +42,37 @@ export default function Dashboard() {
     manager: "",
   })
 
+  // Initialize currentOrgId on client side only
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      let storedOrgId = window.localStorage.getItem("current_org_id") || ""
+      
+      // Check if stored org_id is valid UUID format
+      if (storedOrgId && !isValidUUID(storedOrgId)) {
+        console.log(`Invalid UUID format found: ${storedOrgId}, generating new one`)
+        storedOrgId = generateUUID()
+        window.localStorage.setItem("current_org_id", storedOrgId)
+      }
+      
+      setCurrentOrgId(storedOrgId)
+    }
+  }, [])
+
   const debugInfo = {
     showProjectDetail,
     showClientView,
     showAddProject,
     selectedProject: selectedProject?.project_title || 'null',
     projectsCount: projects.length,
-    loading
+    loading,
+    currentOrgId
   }
 
   useEffect(() => {
-    fetchProjects()
-  }, [])
+    if (currentOrgId) {
+      fetchProjects()
+    }
+  }, [currentOrgId])
 
   useEffect(() => {
     filterProjects()
@@ -45,22 +80,61 @@ export default function Dashboard() {
 
   const fetchProjects = async () => {
     try {
-      const response = await fetch("/api/projects")
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+      // Get org_id from state
+      const orgId = currentOrgId
+      
+      console.log("Fetching projects with org_id:", orgId) // Debug log
+      
+      if (!orgId) {
+        console.error("No organization ID found. User must belong to an organization.")
+        setLoading(false)
+        return
+      }
+
+      // Validate UUID format before making API call
+      if (!isValidUUID(orgId)) {
+        console.error("Invalid UUID format:", orgId)
+        // Generate a new valid UUID
+        const newOrgId = generateUUID()
+        window.localStorage.setItem("current_org_id", newOrgId)
+        setCurrentOrgId(newOrgId)
+        setLoading(false)
+        return
+      }
+
+      const url = `/api/projects?org_id=${orgId}`
+      console.log("Making request to:", url) // Debug log
+      
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          "x-org-id": orgId,
+        },
+      })
+
+      console.log("Response status:", response.status) // Debug log
+      console.log("Response ok:", response.ok) // Debug log
+
+      if (!response.ok) {
+        const errorData = await response.text()
+        console.error("API Error Response:", errorData)
+        
+        if (response.status === 400) {
+          throw new Error(`Bad Request: ${errorData}. Check if org_id is being sent correctly.`)
+        }
+        
+        throw new Error(`HTTP error! status: ${response.status} - ${errorData}`)
+      }
+      
       const data = await response.json()
+      console.log("Received data:", data) // Debug log
       setProjects(data || [])
+      
     } catch (error) {
       console.error("Error fetching projects:", error)
-      setProjects([
-        {
-          id: 1,
-          project_title: "Test Project 1",
-          po_number: "PO-001",
-          client_name: "Test Client",
-          sales_order_date: "2024-01-01",
-          total_value: 1000000
-        }
-      ])
+      const errorMessage = error.message || "Failed to fetch projects. Please try again."
+      alert(`Error: ${errorMessage}\n\norg_id being used: ${currentOrgId}`)
     } finally {
       setLoading(false)
     }
@@ -137,6 +211,14 @@ export default function Dashboard() {
     setShowAddProject(false)
   }
 
+  // Function to set up organization with proper UUID
+  const setupOrganization = () => {
+    const newOrgId = generateUUID()
+    window.localStorage.setItem("current_org_id", newOrgId)
+    setCurrentOrgId(newOrgId)
+    console.log("Generated new org_id:", newOrgId)
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -146,18 +228,64 @@ export default function Dashboard() {
     )
   }
 
+  // Show organization selection if no org_id
+  if (!currentOrgId) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="bg-white rounded-lg shadow-lg p-8 max-w-md w-full mx-4">
+          <h2 className="text-2xl font-semibold text-gray-900 mb-4">Select Organization</h2>
+          <p className="text-gray-600 mb-6">
+            You need to select an organization to view the dashboard.
+          </p>
+          <div className="space-y-3">
+            <button 
+              className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+              onClick={setupOrganization}
+            >
+              Generate Organization ID
+            </button>
+            <button 
+              className="w-full px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50"
+              onClick={() => {
+                alert("Navigate to create organization page")
+              }}
+            >
+              Create New Organization
+            </button>
+          </div>
+          
+          {/* Debug info for development */}
+          <div className="mt-6 p-3 bg-gray-50 rounded text-xs text-gray-600">
+            <strong>Debug Info:</strong>
+            <pre>{JSON.stringify(debugInfo, null, 2)}</pre>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
-
-
-    
-
       <div className="max-w-7xl mx-auto px-8 py-8">
+        {/* Organization ID Display for debugging */}
+        <div className="mb-4 p-2 bg-blue-50 rounded text-sm text-blue-700">
+          <strong>Current Organization ID:</strong> {currentOrgId}
+          <button 
+            onClick={() => {
+              navigator.clipboard.writeText(currentOrgId)
+              alert("Organization ID copied to clipboard!")
+            }}
+            className="ml-2 text-xs bg-blue-200 px-2 py-1 rounded hover:bg-blue-300"
+          >
+            Copy
+          </button>
+        </div>
+
         <h2 className="text-2xl font-semibold text-gray-900 mb-6">Business Overview</h2>
         <SummaryCards projects={projects} />
 
         <h2 className="text-2xl font-semibold text-gray-900 mb-6 mt-8">Sales Overview</h2>
-        <SalesOverview />
+        <SalesOverview projects={projects} />
 
         <ProjectFilters
           searchTerm={searchTerm}
@@ -165,9 +293,9 @@ export default function Dashboard() {
           filters={filters}
           onFiltersChange={setFilters}
           onAddProject={handleAddProject}
+          projects={projects}
         />
 
-        {/* No onProjectEdit prop required; ProjectGrid handles its own Edit modal */}
         <ProjectGrid
           projects={filteredProjects}
           onProjectSelect={handleProjectSelect}

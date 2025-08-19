@@ -1,4 +1,4 @@
-// app/api/equipment-documents/route.js
+// app/api/project-documents/route.js
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 
@@ -11,22 +11,21 @@ export async function POST(request) {
   try {
     const body = await request.json()
     
-    const { project_id, equipment_id, file_name, url, doc_type } = body
+    const { project_id, file_name, url, doc_type } = body
 
-    if (!project_id || !equipment_id || !file_name || !url || !doc_type) {
+    if (!project_id || !file_name || !url || !doc_type) {
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 }
       )
     }
 
-    // Insert equipment document record
+    // Insert document record
     const { data, error } = await supabase
-      .from('equipment_documents')
+      .from('project_documents')
       .insert([
         {
           project_id,
-          equipment_id,
           file_name,
           url,
           doc_type,
@@ -38,7 +37,7 @@ export async function POST(request) {
     if (error) {
       console.error('Database insert error:', error)
       return NextResponse.json(
-        { error: 'Failed to save equipment document record' },
+        { error: 'Failed to save document record' },
         { status: 500 }
       )
     }
@@ -46,7 +45,7 @@ export async function POST(request) {
     return NextResponse.json(data[0])
 
   } catch (error) {
-    console.error('Equipment documents API error:', error)
+    console.error('Project documents API error:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

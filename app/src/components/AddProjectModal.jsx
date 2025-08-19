@@ -3,6 +3,20 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useSession } from "@/components/SessionProvider";
 
+// UUID Utility Functions
+function isValidUUID(uuid) {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(uuid);
+}
+
+function generateUUID() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
 /* ========= Small reusable Combo with "+ Add New" + existing list ========= */
 function AddableCombo({
   label,
@@ -263,101 +277,317 @@ export const AddProjectModal = ({ isOpen, onClose, onProjectAdded }) => {
   if (!isOpen) return null;
 
   /* ---------- Excel helpers ---------- */
-  const handleExcelUpload = async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    if (!xlsxLoaded || !window.XLSX) {
-      setUploadStatus("❌ Excel library not loaded yet. Please try again.");
-      return;
-    }
-    setUploadStatus("Processing...");
-    try {
-      const buf = await file.arrayBuffer();
-      const wb = window.XLSX.read(buf);
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = window.XLSX.utils.sheet_to_json(ws, { header: 1 });
-      const data = {};
-      const headers = rows[0] || [];
-      const dataRow = rows[1] || [];
-      headers.forEach((h, i) => {
-        if (h && dataRow[i] !== undefined) data[h.toString().toLowerCase().trim()] = dataRow[i];
-      });
-
-      const newForm = { ...formData };
-      const newEquip = { ...equipmentData };
-      const fieldMap = {
-        "project title": "projectTitle",
-        title: "projectTitle",
-        "po number": "poNumber",
-        po: "poNumber",
-        "client name": "clientName",
-        client: "clientName",
-        "sales order date": "salesOrderDate",
-        "order date": "salesOrderDate",
-        date: "salesOrderDate",
-        "plant location": "plantLocation",
-        location: "plantLocation",
-        "client industry": "clientIndustry",
-        industry: "clientIndustry",
-        "project manager": "projectManager",
-        manager: "projectManager",
-        consultant: "consultant",
-        "tpi agency": "tpiAgency",
-        tpi: "tpiAgency",
-        "client focal point": "clientFocalPoint",
-        "focal point": "clientFocalPoint",
-        "total value": "totalValue",
-        value: "totalValue",
-        amount: "totalValue",
-        "payment terms": "paymentTerms",
-        terms: "paymentTerms",
-        "payment milestones": "paymentMilestones",
-        milestones: "paymentMilestones",
-        "kickoff notes": "kickoffNotes",
-        kickoff: "kickoffNotes",
-        "production notes": "productionNotes",
-        production: "productionNotes",
-      };
-      Object.entries(fieldMap).forEach(([k, v]) => {
-        if (data[k]) newForm[v] = data[k].toString();
-      });
-
-      ["scope", "services", "work scope"].forEach((f) => {
-        if (data[f]) {
-          const items = data[f].toString().split(",").map((s) => s.trim());
-          newForm.scope = items.filter((i) =>
-            ["Design", "Manufacturing", "Testing", "Documentation", "Installation", "Commissioning"].includes(i)
-          );
+ // Enhanced Excel handling function for AddProjectModal
+const handleExcelUpload = async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  
+  if (!xlsxLoaded || !window.XLSX) {
+    setUploadStatus("❌ Excel library not loaded yet. Please try again.");
+    return;
+  }
+  
+  setUploadStatus("📋 Processing Excel file...");
+  
+  try {
+    const buf = await file.arrayBuffer();
+    const wb = window.XLSX.read(buf);
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = window.XLSX.utils.sheet_to_json(ws, { header: 1 });
+    
+    // Create a data object from Excel
+    const data = {};
+    const headers = rows[0] || [];
+    const dataRow = rows[1] || [];
+    
+    // Map headers to data
+    headers.forEach((h, i) => {
+      if (h && dataRow[i] !== undefined && dataRow[i] !== null && dataRow[i] !== "") {
+        const key = h.toString().toLowerCase().trim();
+        let value = dataRow[i];
+        
+        // Handle different data types
+        if (typeof value === 'number') {
+          value = value.toString();
+        } else if (value instanceof Date) {
+          value = value.toISOString().split('T')[0]; // Format as YYYY-MM-DD
+        } else if (typeof value === 'string') {
+          value = value.trim();
         }
-      });
-
-      const eqFields = {
-        "heat exchanger": "Heat Exchanger",
-        "pressure vessel": "Pressure Vessel",
-        reactor: "Reactor",
-        "storage tank": "Storage Tank",
-        "distillation column": "Distillation Column",
-      };
-      Object.entries(eqFields).forEach(([k, type]) => {
-        if (data[k] && !isNaN(data[k])) {
-          const q = parseInt(data[k]);
-          if (q > 0) newEquip[type] = { ...newEquip[type], selected: true, quantity: q };
+        
+        data[key] = value;
+      }
+    });
+    
+    console.log("Parsed Excel data:", data);
+    
+    // Create new form data object
+    const newForm = { ...formData };
+    const newEquip = { ...equipmentData };
+    const foundFields = [];
+    const missingFieldsList = [];
+    
+    // Enhanced field mapping with multiple possible column names
+    const fieldMappings = {
+      // Project Title mappings
+      projectTitle: [
+        'project title', 'project_title', 'title', 'project name', 'project_name',
+        'name', 'प्रोजेक्ट टाइटल', 'प्रोजेक्ट नाम'
+      ],
+      
+      // PO Number mappings
+      poNumber: [
+        'po number', 'po_number', 'po', 'purchase order', 'purchase_order',
+        'order number', 'order_number', 'पीओ नंबर', 'ऑर्डर नंबर'
+      ],
+      
+      // Client Name mappings
+      clientName: [
+        'client name', 'client_name', 'client', 'customer', 'customer name',
+        'customer_name', 'company', 'company name', 'क्लाइंट नाम', 'ग्राहक नाम'
+      ],
+      
+      // Sales Order Date mappings
+      salesOrderDate: [
+        'sales order date', 'sales_order_date', 'order date', 'order_date',
+        'date', 'so date', 'so_date', 'ऑर्डर डेट', 'सेल्स ऑर्डर डेट'
+      ],
+      
+      // Plant Location mappings
+      plantLocation: [
+        'plant location', 'plant_location', 'location', 'site', 'plant',
+        'address', 'place', 'city', 'स्थान', 'प्लांट लोकेशन'
+      ],
+      
+      // Client Industry mappings
+      clientIndustry: [
+        'client industry', 'client_industry', 'industry', 'sector',
+        'business type', 'business_type', 'इंडस्ट्री', 'व्यवसाय'
+      ],
+      
+      // Project Manager mappings
+      projectManager: [
+        'project manager', 'project_manager', 'manager', 'pm', 'lead',
+        'project lead', 'प्रोजेक्ट मैनेजर', 'मैनेजर'
+      ],
+      
+      // Consultant mappings
+      consultant: [
+        'consultant', 'consulting', 'advisor', 'consultancy',
+        'कंसल्टेंट', 'सलाहकार'
+      ],
+      
+      // TPI Agency mappings
+      tpiAgency: [
+        'tpi agency', 'tpi_agency', 'tpi', 'third party', 'third_party',
+        'inspector', 'inspection agency', 'टीपीआई एजेंसी'
+      ],
+      
+      // Client Focal Point mappings
+      clientFocalPoint: [
+        'client focal point', 'client_focal_point', 'focal point', 'focal_point',
+        'contact person', 'contact_person', 'client contact', 'point of contact',
+        'संपर्क व्यक्ति', 'क्लाइंट कॉन्टैक्ट'
+      ],
+      
+      // Total Value mappings
+      totalValue: [
+        'total value', 'total_value', 'value', 'amount', 'total amount',
+        'total_amount', 'project value', 'project_value', 'cost',
+        'price', 'कुल राशि', 'मूल्य'
+      ],
+      
+      // Payment Terms mappings
+      paymentTerms: [
+        'payment terms', 'payment_terms', 'terms', 'payment condition',
+        'payment_condition', 'भुगतान शर्तें'
+      ],
+      
+      // Payment Milestones mappings
+      paymentMilestones: [
+        'payment milestones', 'payment_milestones', 'milestones',
+        'payment schedule', 'payment_schedule', 'भुगतान मील के पत्थर'
+      ],
+      
+      // Kickoff Notes mappings
+      kickoffNotes: [
+        'kickoff notes', 'kickoff_notes', 'kickoff', 'meeting notes',
+        'meeting_notes', 'notes', 'किकऑफ नोट्स'
+      ],
+      
+      // Production Notes mappings
+      productionNotes: [
+        'production notes', 'production_notes', 'production',
+        'manufacturing notes', 'manufacturing_notes', 'प्रोडक्शन नोट्स'
+      ]
+    };
+    
+    // Map Excel data to form fields
+    Object.entries(fieldMappings).forEach(([formField, possibleKeys]) => {
+      let found = false;
+      for (const key of possibleKeys) {
+        if (data[key] !== undefined) {
+          let value = data[key];
+          
+          // Special handling for date fields
+          if (formField === 'salesOrderDate') {
+            if (typeof value === 'string') {
+              // Try to parse different date formats
+              const dateFormats = [
+                /^\d{4}-\d{2}-\d{2}$/, // YYYY-MM-DD
+                /^\d{2}[-\/]\d{2}[-\/]\d{4}$/, // DD-MM-YYYY or DD/MM/YYYY
+                /^\d{2}[-\/]\d{2}[-\/]\d{2}$/, // DD-MM-YY or DD/MM/YY
+              ];
+              
+              for (const format of dateFormats) {
+                if (format.test(value)) {
+                  if (value.includes('/') || value.includes('-')) {
+                    const parts = value.split(/[-\/]/);
+                    if (parts.length === 3) {
+                      if (parts[2].length === 2) {
+                        parts[2] = '20' + parts[2]; // Convert YY to YYYY
+                      }
+                      if (parts[0].length === 2 && parts[1].length === 2) {
+                        // DD-MM-YYYY format, convert to YYYY-MM-DD
+                        value = `${parts[2]}-${parts[1]}-${parts[0]}`;
+                      }
+                    }
+                  }
+                  break;
+                }
+              }
+            }
+          }
+          
+          // Special handling for numeric fields
+          if (formField === 'totalValue') {
+            // Remove currency symbols and convert to number
+            value = value.toString().replace(/[₹$,\s]/g, '');
+            if (!isNaN(value) && value !== '') {
+              value = parseFloat(value).toString();
+            }
+          }
+          
+          newForm[formField] = value;
+          foundFields.push(`${formField} (from "${key}")`);
+          found = true;
+          break;
         }
-      });
-
-      ["projectTitle", "poNumber", "clientName", "salesOrderDate"].forEach((f) => {
-        if (!newForm[f]) missingFields.push(f);
-      });
-
-      setFormData(newForm);
-      setEquipmentData(newEquip);
-      setUploadStatus("✅ Excel data loaded successfully!");
-      setTimeout(() => setUploadStatus(""), 3000);
-    } catch {
-      setUploadStatus("❌ Error reading Excel file. Please check the format.");
-      setTimeout(() => setUploadStatus(""), 5000);
+      }
+      
+      if (!found && ['projectTitle', 'poNumber', 'clientName', 'salesOrderDate'].includes(formField)) {
+        missingFieldsList.push(formField);
+      }
+    });
+    
+    // Handle Scope (multiple values in one cell or separate columns)
+    const scopeFields = [
+      'scope', 'services', 'work scope', 'project scope', 'scope of work',
+      'design', 'manufacturing', 'testing', 'documentation', 'installation', 'commissioning'
+    ];
+    
+    const scopeItems = [];
+    scopeFields.forEach(field => {
+      if (data[field]) {
+        const value = data[field].toString();
+        if (field === 'scope' || field === 'services' || field === 'work scope' || field === 'project scope' || field === 'scope of work') {
+          // Split by comma and check each item
+          const items = value.split(',').map(s => s.trim());
+          items.forEach(item => {
+            const scopeOptions = ['Design', 'Manufacturing', 'Testing', 'Documentation', 'Installation', 'Commissioning'];
+            const matchedScope = scopeOptions.find(opt => 
+              item.toLowerCase().includes(opt.toLowerCase()) || 
+              opt.toLowerCase().includes(item.toLowerCase())
+            );
+            if (matchedScope && !scopeItems.includes(matchedScope)) {
+              scopeItems.push(matchedScope);
+            }
+          });
+        } else {
+          // Individual scope columns
+          const scopeMap = {
+            'design': 'Design',
+            'manufacturing': 'Manufacturing', 
+            'testing': 'Testing',
+            'documentation': 'Documentation',
+            'installation': 'Installation',
+            'commissioning': 'Commissioning'
+          };
+          
+          if (scopeMap[field] && (value.toLowerCase() === 'yes' || value.toLowerCase() === 'true' || value === '1' || value.toLowerCase() === 'y')) {
+            if (!scopeItems.includes(scopeMap[field])) {
+              scopeItems.push(scopeMap[field]);
+            }
+          }
+        }
+      }
+    });
+    
+    if (scopeItems.length > 0) {
+      newForm.scope = scopeItems;
+      foundFields.push(`scope (${scopeItems.join(', ')})`);
     }
-  };
+    
+    // Handle Equipment Data
+    const equipmentTypes = {
+      'heat exchanger': 'Heat Exchanger',
+      'heat_exchanger': 'Heat Exchanger',
+      'pressure vessel': 'Pressure Vessel', 
+      'pressure_vessel': 'Pressure Vessel',
+      'reactor': 'Reactor',
+      'storage tank': 'Storage Tank',
+      'storage_tank': 'Storage Tank',
+      'distillation column': 'Distillation Column',
+      'distillation_column': 'Distillation Column'
+    };
+    
+    Object.entries(equipmentTypes).forEach(([excelKey, equipmentType]) => {
+      if (data[excelKey] && !isNaN(data[excelKey])) {
+        const quantity = parseInt(data[excelKey]);
+        if (quantity > 0) {
+          newEquip[equipmentType] = {
+            ...newEquip[equipmentType],
+            selected: true,
+            quantity: quantity
+          };
+          foundFields.push(`${equipmentType} (${quantity} units)`);
+        }
+      }
+    });
+    
+    // Update state
+    setFormData(newForm);
+    setEquipmentData(newEquip);
+    setMissingFields(missingFieldsList);
+    
+    // Show status message
+    if (foundFields.length > 0) {
+      setUploadStatus(`✅ Excel data loaded successfully! Found: ${foundFields.length} fields`);
+      
+      if (missingFieldsList.length > 0) {
+        setTimeout(() => {
+          setUploadStatus(`⚠️ Please fill missing required fields: ${missingFieldsList.join(', ')}`);
+        }, 3000);
+      }
+    } else {
+      setUploadStatus("⚠️ No matching fields found in Excel. Please check column headers and try again.");
+    }
+    
+    // Clear status after some time
+    setTimeout(() => {
+      if (missingFieldsList.length === 0) {
+        setUploadStatus("");
+      }
+    }, 6000);
+    
+    console.log("Form updated with:", { newForm, foundFields, missingFieldsList });
+    
+  } catch (error) {
+    console.error("Excel processing error:", error);
+    setUploadStatus("❌ Error reading Excel file. Please check the format and try again.");
+    setTimeout(() => setUploadStatus(""), 5000);
+  }
+};
 
   /* ---------- small handlers ---------- */
   const setField = (k, v) => setFormData((p) => ({ ...p, [k]: v }));
@@ -452,135 +682,241 @@ export const AddProjectModal = ({ isOpen, onClose, onProjectAdded }) => {
   const nextStep = () => currentStep < 3 && setCurrentStep((s) => s + 1);
   const prevStep = () => currentStep > 1 && setCurrentStep((s) => s - 1);
 
-  /* ---------- Create project (unchanged) ---------- */
-  const handleCreateProject = async () => {
-    try {
-      const projRes = await fetch("/api/projects", {
+  /* ---------- Create project with UUID validation ---------- */
+// This is the corrected handleCreateProject function for your AddProjectModal
+// Replace your existing handleCreateProject function with this:
+
+const handleCreateProject = async () => {
+  try {
+    // Show loading state
+    setUploadStatus("🚀 Creating project and uploading files...");
+    
+    // Get org_id
+    let orgId = window?.localStorage?.getItem("current_org_id");
+    if (!orgId || !isValidUUID(orgId)) {
+      orgId = generateUUID();
+      window.localStorage.setItem("current_org_id", orgId);
+    }
+    
+    // Validate required fields
+    const requiredFields = ['projectTitle', 'poNumber', 'clientName', 'salesOrderDate'];
+    const missing = requiredFields.filter(field => !formData[field]?.trim());
+    
+    if (missing.length > 0) {
+      setUploadStatus("");
+      alert(`Please fill in required fields: ${missing.join(', ')}`);
+      return;
+    }
+    
+    // Create project first
+    const projRes = await fetch("/api/projects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        project_title: formData.projectTitle,
+        po_number: formData.poNumber,
+        client_name: formData.clientName,
+        sales_order_date: formData.salesOrderDate,
+        plant_location: formData.plantLocation,
+        client_industry: formData.clientIndustry,
+        project_manager: formData.projectManager,
+        consultant: formData.consultant,
+        tpi_agency: formData.tpiAgency,
+        client_focal_point: formData.clientFocalPoint,
+        total_value: formData.totalValue ? Number(formData.totalValue) : 0,
+        payment_terms: formData.paymentTerms,
+        payment_milestones: formData.paymentMilestones,
+        org_id: orgId,
+        kickoff_notes: formData.kickoffNotes,
+        production_notes: formData.productionNotes,
+        scope: formData.scope,
+      }),
+    });
+    
+    if (!projRes.ok) {
+      const errorData = await projRes.json();
+      throw new Error(errorData.error || "Project create failed");
+    }
+    
+    const project = await projRes.json();
+    console.log('Project created:', project);
+
+    // Equipment creation and file uploads
+    const stdEntries = Object.entries(equipmentData)
+      .filter(([_, d]) => d.selected && d.quantity > 0)
+      .map(([type, d]) => ({ type, ...d }));
+    const customEntries = customEquipment
+      .filter((it) => it.selected && it.quantity > 0)
+      .map((it) => ({ type: it.name, ...it }));
+    const allEquip = [...stdEntries, ...customEntries];
+
+    // Create equipment and upload documents
+    for (const item of allEquip) {
+      const eqRes = await fetch("/api/equipment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          project_title: formData.projectTitle,
-          po_number: formData.poNumber,
-          client_name: formData.clientName,
-          sales_order_date: formData.salesOrderDate,
-          plant_location: formData.plantLocation,
-          client_industry: formData.clientIndustry,
-          project_manager: formData.projectManager,
-          consultant: formData.consultant,
-          tpi_agency: formData.tpiAgency,
-          client_focal_point: formData.clientFocalPoint,
-          total_value: formData.totalValue ? Number(formData.totalValue) : 0,
-          payment_terms: formData.paymentTerms,
-          payment_milestones: formData.paymentMilestones,
-          org_id: window?.localStorage?.getItem("current_org_id") || null,
-          kickoff_notes: formData.kickoffNotes,
-          production_notes: formData.productionNotes,
-          scope: formData.scope,
+          project_id: project.id,
+          equipment_type: item.type,
+          quantity: item.quantity,
+          tag_number: item.details?.tagNumber || null,
+          job_number: item.details?.jobNumber || null,
+          manufacturing_serial: item.details?.manufacturingSerial || null,
         }),
       });
-      if (!projRes.ok) throw new Error("Project create failed");
-      const project = await projRes.json();
+      
+      if (!eqRes.ok) {
+        console.error("Equipment creation failed for:", item.type);
+        continue;
+      }
+      
+      const eq = await eqRes.json();
 
-      const stdEntries = Object.entries(equipmentData)
-        .filter(([_, d]) => d.selected && d.quantity > 0)
-        .map(([type, d]) => ({ type, ...d }));
-      const customEntries = customEquipment
-        .filter((it) => it.selected && it.quantity > 0)
-        .map((it) => ({ type: it.name, ...it }));
-      const allEquip = [...stdEntries, ...customEntries];
-
-      for (const item of allEquip) {
-        const eqRes = await fetch("/api/equipment", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            project_id: project.id,
-            equipment_type: item.type,
-            quantity: item.quantity,
-            tag_number: item.details?.tagNumber || null,
-            job_number: item.details?.jobNumber || null,
-            manufacturing_serial: item.details?.manufacturingSerial || null,
-          }),
-        });
-        if (!eqRes.ok) throw new Error("Equipment create failed");
-        const eq = await eqRes.json();
-
-        const files = item.details?.documents || [];
-        for (const file of files) {
-          const path = `${project.id}/${eq.id}/${Date.now()}-${file.name}`;
-          const up = await supabase.storage.from("equipment-docs").upload(path, file, {
-            cacheControl: "3600",
-            upsert: false,
+      // Upload equipment documents
+      const files = item.details?.documents || [];
+      for (const file of files) {
+        try {
+          const fileName = `${Date.now()}-${file.name}`;
+          const path = `${project.id}/${eq.id}/${fileName}`;
+          
+          // Upload file to storage
+          const formData = new FormData();
+          formData.append('file', file);
+          formData.append('path', path);
+          formData.append('bucket', 'equipment-docs');
+          
+          const uploadRes = await fetch('/api/upload-file', {
+            method: 'POST',
+            body: formData
           });
-          if (up.error) continue;
-          const { data: pub } = supabase.storage.from("equipment-docs").getPublicUrl(path);
-          await fetch("/api/equipment-documents", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              project_id: project.id,
-              equipment_id: eq.id,
-              file_name: file.name,
-              url: pub.publicUrl,
-              doc_type: "equipment-attachment",
-            }),
-          });
+          
+          if (uploadRes.ok) {
+            const { url } = await uploadRes.json();
+            
+            // Save document record
+            await fetch("/api/equipment-documents", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                project_id: project.id,
+                equipment_id: eq.id,
+                file_name: file.name,
+                url: url,
+                doc_type: "equipment-attachment",
+              }),
+            });
+            
+            console.log(`✅ Uploaded equipment document: ${file.name}`);
+          } else {
+            console.error(`❌ Failed to upload equipment document: ${file.name}`);
+          }
+        } catch (err) {
+          console.error('Equipment file upload error:', err);
         }
       }
+    }
 
-      const toUpload = [
-        ["unpricedPO", "unpriced-po"],
-        ["clientReference", "client-reference"],
-        ["designInputs", "design-inputs"],
-      ];
-      for (const [key, docType] of toUpload) {
-        const file = uploadedFiles[key];
-        if (!file) continue;
-        const path = `${project.id}/${Date.now()}-${file.name}`;
-        const up = await supabase.storage.from("project-docs").upload(path, file, {
-          cacheControl: "3600",
-          upsert: false,
-        });
-        if (up.error) continue;
-        const { data: pub } = supabase.storage.from("project-docs").getPublicUrl(path);
-        await fetch("/api/project-documents", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            project_id: project.id,
-            file_name: file.name,
-            url: pub.publicUrl,
-            doc_type: docType,
-          }),
-        });
-      }
+    // Upload project documents
+    const documentUploads = [
+      { file: uploadedFiles.unpricedPO, docType: "unpriced-po" },
+      { file: uploadedFiles.clientReference, docType: "client-reference" },
+      { file: uploadedFiles.designInputs, docType: "design-inputs" }
+    ];
 
-      if (uploadedFiles.otherDocuments?.length) {
-        for (const file of uploadedFiles.otherDocuments) {
-          const path = `${project.id}/${Date.now()}-${file.name}`;
-          const up = await supabase.storage.from("project-docs").upload(path, file);
-          if (up.error) continue;
-          const { data: pub } = supabase.storage.from("project-docs").getPublicUrl(path);
+    for (const { file, docType } of documentUploads) {
+      if (!file) continue;
+      
+      try {
+        const fileName = `${Date.now()}-${file.name}`;
+        const path = `${project.id}/${fileName}`;
+        
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('path', path);
+        formData.append('bucket', 'project-docs');
+        
+        const uploadRes = await fetch('/api/upload-file', {
+          method: 'POST',
+          body: formData
+        });
+        
+        if (uploadRes.ok) {
+          const { url } = await uploadRes.json();
+          
           await fetch("/api/project-documents", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               project_id: project.id,
               file_name: file.name,
-              url: pub.publicUrl,
-              doc_type: "other",
+              url: url,
+              doc_type: docType,
             }),
           });
+          
+          console.log(`✅ Uploaded project document: ${file.name}`);
+        } else {
+          console.error(`❌ Failed to upload project document: ${file.name}`);
+        }
+      } catch (err) {
+        console.error('Project document upload error:', err);
+      }
+    }
+
+    // Upload other documents
+    if (uploadedFiles.otherDocuments?.length) {
+      for (const file of uploadedFiles.otherDocuments) {
+        try {
+          const fileName = `${Date.now()}-${file.name}`;
+          const path = `${project.id}/${fileName}`;
+          
+          const formData = new FormData();
+          formData.append('file', file);
+          formData.append('path', path);
+          formData.append('bucket', 'project-docs');
+          
+          const uploadRes = await fetch('/api/upload-file', {
+            method: 'POST',
+            body: formData
+          });
+          
+          if (uploadRes.ok) {
+            const { url } = await uploadRes.json();
+            
+            await fetch("/api/project-documents", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                project_id: project.id,
+                file_name: file.name,
+                url: url,
+                doc_type: "other",
+              }),
+            });
+            
+            console.log(`✅ Uploaded other document: ${file.name}`);
+          } else {
+            console.error(`❌ Failed to upload other document: ${file.name}`);
+          }
+        } catch (err) {
+          console.error('Other document upload error:', err);
         }
       }
-
-      onProjectAdded?.();
-      onClose();
-    } catch (e) {
-      alert(e.message || "Failed to create project");
     }
-  };
 
+    setUploadStatus("✅ Project created successfully!");
+    setTimeout(() => setUploadStatus(""), 2000);
+    
+    alert('🎉 Project created successfully with all documents uploaded!');
+    onProjectAdded?.();
+    onClose();
+    
+  } catch (e) {
+    console.error('Error creating project:', e);
+    setUploadStatus("");
+    alert(`❌ Failed to create project: ${e.message}`);
+  }
+};
   /* ================ STEPS UI ================ */
   const renderStep1 = () => (
     <div className="space-y-6">
@@ -1154,7 +1490,7 @@ export const AddProjectModal = ({ isOpen, onClose, onProjectAdded }) => {
           <h2 className="text-lg sm:text-xl font-semibold">Add New Project</h2>
           <button
             onClick={onClose}
-            className="bg-white bg-opacity-20 hover:bg-opacity-30 px-3 py-1 rounded text-sm transition- text-black"
+            className="bg-white bg-opacity-20 hover:bg-opacity-30 px-3 py-1 rounded text-sm transition-colors text-black"
           >
             ✕ Close
           </button>
@@ -1231,35 +1567,3 @@ export const AddProjectModal = ({ isOpen, onClose, onProjectAdded }) => {
     </div>
   );
 };
-
-/* Optional demo wrapper (remove if not needed) */
-export default function App() {
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const handleProjectAdded = () => {};
-  return (
-    <div className="min-h-screen bg-gray-100 p-4 sm:p-8">
-      <div className="max-w-4xl mx-auto">
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
-            <h1 className="text-2xl font-bold text-gray-800">Project Management Dashboard</h1>
-            <button
-              onClick={() => setIsModalOpen(true)}
-              className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition-colors"
-            >
-              + Add New Project
-            </button>
-          </div>
-          <div className="text-center py-12 text-gray-500">
-            <p>Click "Add New Project" button to open the modal</p>
-          </div>
-        </div>
-      </div>
-
-      <AddProjectModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onProjectAdded={handleProjectAdded}
-      />
-    </div>
-  );
-}

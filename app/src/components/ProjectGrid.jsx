@@ -1,102 +1,96 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import axios from 'axios';
 import ProjectEditModal from "./ProjectEditModal";
+import { ProgressUpdateModal } from "./ProgressUpdateModal";
 
-function ProgressUpdateModal({ isOpen, onClose, phaseData, onUpdate }) {
-  const [status, setStatus] = useState(phaseData?.progress || 0);
-  const [remarks, setRemarks] = useState(phaseData?.remarks || "");
 
-  const handleSubmit = () => {
-    if (onUpdate) {
-      onUpdate({
-        phaseId: phaseData.id,
-        phaseName: phaseData.name,
-        progress: status,
-        remarks: remarks,
-      });
-    }
-    onClose();
-  };
-
-  if (!isOpen || !phaseData) return null;
-
-  return (
-    <div className="fixed inset-0 bg-opacity-60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w/full border-2 border-blue-400">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900">Update Status - {phaseData.name}</h3>
-        </div>
-
-        <div className="px-6 py-4 space-y-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-3">Status</label>
-            <div className="flex items-center gap-4 mb-4">
-              <span className="text-lg font-semibold text-gray-900">{status}%</span>
-              <div className="flex-1 relative">
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div className="bg-blue-500 h-2 rounded-full transition-all duration-300" style={{ width: `${status}%` }} />
-                </div>
-                <div
-                  className="absolute top-[-35px] bg-gray-700 text-white text-xs px-2 py-1 rounded transform -translate-x-1/2 pointer-events-none"
-                  style={{ left: `${status}%` }}
-                >
-                  {status}
-                </div>
-              </div>
-              <div className="w-6 h-6 flex items-center justify-center">
-                {status === 100 && (
-                  <svg className="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
-                    <path
-                      fillRule="evenodd"
-                      d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
-                )}
-              </div>
-            </div>
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value={status}
-              onChange={(e) => setStatus(parseInt(e.target.value))}
-              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-              style={{ background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${status}%, #e5e7eb ${status}%, #e5e7eb 100%)` }}
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Remarks</label>
-            <textarea
-              value={remarks}
-              onChange={(e) => setRemarks(e.target.value)}
-              placeholder="Add your remarks here..."
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-              rows="4"
-            />
-          </div>
-        </div>
-
-        <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
-          <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors">
-            Cancel
-          </button>
-          <button onClick={handleSubmit} className="px-6 py-2 text-sm font-medium text-white bg-blue-500 hover:bg-blue-600 rounded-md transition-colors">
-            Submit
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export default function ProjectGrid({ projects, onProjectSelect, onProjectEdit, onClientView }) {
+export default function ProjectGrid({ onProjectSelect, onProjectEdit, onClientView, refreshTrigger }) {
+  const [projects, setProjects] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [expandedProjects, setExpandedProjects] = useState(new Set());
   const [progressModal, setProgressModal] = useState({ isOpen: false, phaseData: null });
   const [editModal, setEditModal] = useState({ isOpen: false, projectData: null });
   const [projectProgress, setProjectProgress] = useState({});
+
+  // Fetch projects and their progress
+  const fetchProjects = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const orgId = window?.localStorage?.getItem("current_org_id");
+
+      // Fetch projects
+      const projectsResponse = await axios.get('/api/projects', {
+        params: orgId ? { org_id: orgId } : {}
+      });
+
+      const projectsData = projectsResponse.data || [];
+      setProjects(projectsData);
+
+      // Fetch progress for all projects
+      if (projectsData.length > 0) {
+        await fetchAllProgress(projectsData);
+      }
+
+      console.log('Fetched projects:', projectsData);
+    } catch (err) {
+      console.error('Error fetching projects:', err);
+      setError('Failed to load projects. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch progress data for all projects
+  const fetchAllProgress = async (projectsList) => {
+    try {
+      const progressData = {};
+
+      for (const project of projectsList) {
+        const response = await axios.get('/api/project-progress', {
+          params: { project_id: project.id }
+        });
+
+        const phases = response.data || [];
+        progressData[project.id] = {};
+
+        phases.forEach(phase => {
+          progressData[project.id][phase.phase_name] = phase.progress;
+        });
+      }
+
+      setProjectProgress(progressData);
+      console.log('Loaded progress data:', progressData);
+    } catch (error) {
+      console.error('Error fetching progress:', error);
+      // Don't throw error here, let projects load without progress
+    }
+  };
+
+  // Fetch projects on component mount and when refreshTrigger changes
+  useEffect(() => {
+    fetchProjects();
+  }, [refreshTrigger]);
+
+  // Delete project function (unchanged)
+  const deleteProject = async (projectId) => {
+    if (!window.confirm('Are you sure you want to delete this project? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      await axios.delete(`/api/projects?id=${projectId}`);
+      setProjects(prev => prev.filter(p => p.id !== projectId));
+      alert('Project deleted successfully!');
+    } catch (err) {
+      console.error('Error deleting project:', err);
+      alert('Failed to delete project. Please try again.');
+    }
+  };
 
   const toggleProjectExpansion = (projectId) => {
     const next = new Set(expandedProjects);
@@ -108,38 +102,115 @@ export default function ProjectGrid({ projects, onProjectSelect, onProjectEdit, 
 
   const calculateOverallProgress = (project) => {
     const phases = ["Documentation", "Procurement", "Manufacturing", "Testing"];
-    const defaults = [75, 60, 45, 20];
+    const defaults = [0, 0, 0, 0]; // Start with 0 instead of dummy values
     const custom = projectProgress[project.id] || {};
     const values = phases.map((phase, i) => (custom[phase] !== undefined ? custom[phase] : defaults[i]));
     return Math.round(values.reduce((s, v) => s + v, 0) / phases.length);
   };
 
-  const getPhaseProgress = (pid, name, defVal) => projectProgress[pid]?.[name] ?? defVal;
+  const getPhaseProgress = (pid, name, defVal = 0) => projectProgress[pid]?.[name] ?? defVal;
 
-  const handleProgressDoubleClick = (projectId, phaseName, currentProgress) =>
-    setProgressModal({ isOpen: true, phaseData: { id: `${projectId}-${phaseName}`, name: phaseName, progress: currentProgress, remarks: `${phaseName} phase remarks for project ${projectId}` } });
+  // Updated progress double click handler
+  const handleProgressDoubleClick = (projectId, phaseName, currentProgress) => {
+    const project = projects.find(p => p.id === projectId);
 
-  const handleProgressUpdate = (u) => {
-    const [projectId, phaseName] = u.phaseId.split("-");
-    setProjectProgress((prev) => ({ ...prev, [projectId]: { ...prev[projectId], [phaseName]: u.progress } }));
+    setProgressModal({
+      isOpen: true,
+      phaseData: {
+        id: `${projectId}-${phaseName}`,
+        name: phaseName,
+        progress: currentProgress,
+        remarks: ``, // Load from database if needed
+        projectId: projectId,
+        projectTitle: project?.project_title || 'Unknown Project'
+      }
+    });
   };
 
-  // OPEN EDIT (same fields as Add)
-  const handleProjectEdit = (project) => setEditModal({ isOpen: true, projectData: project });
+  // Updated progress update handler
+  const handleProgressUpdate = async (updateData) => {
+    try {
+      const { projectId, phaseName, progress } = updateData;
 
-  // BUBBLE UPDATE UP (parent can persist)
-  const handleProjectUpdate = (updatedProject) => {
-    onProjectEdit && onProjectEdit(updatedProject);
+      // Update local state immediately for UI responsiveness
+      setProjectProgress((prev) => ({
+        ...prev,
+        [projectId]: {
+          ...prev[projectId],
+          [phaseName]: progress
+        }
+      }));
+
+      console.log('Progress updated locally:', updateData);
+
+      // Optionally refresh all progress data
+      // await fetchAllProgress(projects);
+
+    } catch (error) {
+      console.error('Error in handleProgressUpdate:', error);
+    }
+  };
+
+  // Rest of your component code remains the same...
+  const handleProjectUpdate = async (updatedProject) => {
+    try {
+      console.log('Handling project update:', updatedProject);
+      setProjects(prev => prev.map(p =>
+        p.id === updatedProject.id ? { ...p, ...updatedProject } : p
+      ));
+
+      if (onProjectEdit) {
+        onProjectEdit(updatedProject);
+      }
+
+      await fetchProjects();
+      console.log('Project update completed successfully');
+    } catch (error) {
+      console.error('Error in handleProjectUpdate:', error);
+      await fetchProjects();
+      alert('Failed to update project. Please try again.');
+    }
+  };
+
+  const handleProjectEdit = (project) => {
+    console.log('Opening edit modal for project:', project);
+    setEditModal({ isOpen: true, projectData: project });
   };
 
   const closeEditModal = () => setEditModal({ isOpen: false, projectData: null });
   const closeProgressModal = () => setProgressModal({ isOpen: false, phaseData: null });
 
+  // Loading, error, and empty states remain the same...
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <div className="text-gray-500 text-lg">Loading projects...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-12">
+        <div className="text-red-500 text-lg mb-4">{error}</div>
+        <button
+          onClick={fetchProjects}
+          className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
   if (projects.length === 0) {
     return (
       <div className="text-center py-12">
-        <div className="text-gray-500 text-lg">No projects found matching your criteria</div>
-        <div className="text-gray-400 text-sm mt-2">Try adjusting your filters or search terms</div>
+        <div className="text-gray-500 text-lg">No projects found</div>
+        <div className="text-gray-400 text-sm mt-2">Create your first project to get started</div>
       </div>
     );
   }
@@ -147,17 +218,28 @@ export default function ProjectGrid({ projects, onProjectSelect, onProjectEdit, 
   return (
     <>
       <div className="space-y-6">
-        <h3 className="text-xl font-semibold text-gray-900 mb-4">Projects ({projects.length})</h3>
+        <div className="flex items-center justify-between">
+          <h3 className="text-xl font-semibold text-gray-900">Projects ({projects.length})</h3>
+          <button
+            onClick={fetchProjects}
+            className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded-md transition-colors flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            Refresh
+          </button>
+        </div>
 
         {projects.map((project) => {
           const isExpanded = expandedProjects.has(project.id);
           const overall = calculateOverallProgress(project);
           const equipmentCount = project.equipment?.length || 0;
           const phases = ["Documentation", "Procurement", "Manufacturing", "Testing"];
-          const defaults = [75, 50, 30, 0];
 
           return (
             <div key={project.id} className="project-card">
+              {/* Project header remains same */}
               <div className="project-header">
                 <div>
                   <h4 className="project-title">{project.project_title}</h4>
@@ -174,11 +256,12 @@ export default function ProjectGrid({ projects, onProjectSelect, onProjectEdit, 
                 </div>
               </div>
 
+              {/* Updated progress section */}
               <div className="progress-section">
                 <div className="progress-title">Overall Progress: {overall}%</div>
                 <div className="progress-grid">
                   {phases.map((phase, i) => {
-                    const pp = getPhaseProgress(project.id, phase, defaults[i]);
+                    const pp = getPhaseProgress(project.id, phase, 0);
                     return (
                       <div key={phase} className="progress-item">
                         <div
@@ -195,6 +278,10 @@ export default function ProjectGrid({ projects, onProjectSelect, onProjectEdit, 
                   })}
                 </div>
               </div>
+
+              {/* Rest of project card remains same */}
+
+
 
               <div className={`project-summary ${isExpanded ? "active" : ""}`}>
                 <div className="summary-grid">
@@ -222,8 +309,43 @@ export default function ProjectGrid({ projects, onProjectSelect, onProjectEdit, 
                     <strong>TPI Agency:</strong>
                     <span>{project.tpi_agency || "Not assigned"}</span>
                   </div>
+                  <div className="summary-item">
+                    <strong>Client Focal Point:</strong>
+                    <span>{project.client_focal_point || "Not assigned"}</span>
+                  </div>
+                  <div className="summary-item">
+                    <strong>Total Value:</strong>
+                    <span>
+                      {project.total_value ? `₹${(Number(project.total_value) / 100000).toFixed(1)}L` : "Not specified"}
+                    </span>
+                  </div>
+                  <div className="summary-item">
+                    <strong>Payment Terms:</strong>
+                    <span>{project.payment_terms || "Not specified"}</span>
+                  </div>
+                  <div className="summary-item">
+                    <strong>Payment Milestones:</strong>
+                    <span>{project.payment_milestones || "Not specified"}</span>
+                  </div>
+                  <div className="summary-item">
+                    <strong>Order Date:</strong>
+                    <span>
+                      {project.sales_order_date
+                        ? new Date(project.sales_order_date).toLocaleDateString('en-IN')
+                        : "Not specified"}
+                    </span>
+                  </div>
+                  <div className="summary-item">
+                    <strong>Created:</strong>
+                    <span>
+                      {project.created_at
+                        ? new Date(project.created_at).toLocaleDateString('en-IN')
+                        : "Unknown"}
+                    </span>
+                  </div>
                 </div>
 
+                {/* Project Scope */}
                 {Array.isArray(project.scope) && project.scope.length > 0 && (
                   <div className="mt-4">
                     <strong className="text-sm text-gray-700">Project Scope:</strong>
@@ -237,13 +359,31 @@ export default function ProjectGrid({ projects, onProjectSelect, onProjectEdit, 
                   </div>
                 )}
 
+                {/* Kickoff Notes */}
                 {project.kickoff_notes && (
                   <div className="mt-4">
                     <strong className="text-sm text-gray-700">Kickoff Notes:</strong>
-                    <p className="text-sm text-gray-600 mt-1">{project.kickoff_notes}</p>
+                    <p className="text-sm text-gray-600 mt-1 p-3 bg-blue-50 rounded-md border-l-4 border-blue-500">
+                      {project.kickoff_notes}
+                    </p>
                   </div>
                 )}
+
+                {/* Production Notes */}
+                {project.production_notes && (
+                  <div className="mt-4">
+                    <strong className="text-sm text-gray-700">Production Notes:</strong>
+                    <p className="text-sm text-gray-600 mt-1 p-3 bg-green-50 rounded-md border-l-4 border-green-500">
+                      {project.production_notes}
+                    </p>
+                  </div>
+                )}
+
+
+
+
               </div>
+
 
               <div className="action-buttons">
                 <button className="btn btn-primary" onClick={() => onProjectSelect(project)}>
@@ -255,6 +395,12 @@ export default function ProjectGrid({ projects, onProjectSelect, onProjectEdit, 
                 <button className="btn btn-outline" onClick={() => onClientView(project)}>
                   Client View
                 </button>
+                <button
+                  className="btn btn-danger"
+                  onClick={() => deleteProject(project.id)}
+                >
+                  Delete
+                </button>
                 <button className="toggle-btn" onClick={() => toggleProjectExpansion(project.id)}>
                   {isExpanded ? "Show Less" : "Show More"}
                 </button>
@@ -264,7 +410,6 @@ export default function ProjectGrid({ projects, onProjectSelect, onProjectEdit, 
         })}
       </div>
 
-      {/* EDIT modal: EXACT same fields/flow as Add */}
       <ProjectEditModal
         isOpen={editModal.isOpen}
         onClose={closeEditModal}
