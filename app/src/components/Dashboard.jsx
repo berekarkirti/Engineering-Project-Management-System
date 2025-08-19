@@ -9,6 +9,7 @@ import ProjectDetailModal from "./ProjectDetailModal"
 import { AddProjectModal } from "./AddProjectModal"
 import ClientViewModal from "./ClientViewModal"
 import SalesOverview from "./SalesOverview"
+import OrganizationSetup from "./OrganizationSetup"
 
 // Utility function to generate a valid UUID v4
 function generateUUID() {
@@ -35,6 +36,8 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [currentOrgId, setCurrentOrgId] = useState("")
+  const [currentOrganization, setCurrentOrganization] = useState(null)
+  const [showOrgSetup, setShowOrgSetup] = useState(false)
   const [filters, setFilters] = useState({
     client: "",
     equipment: "",
@@ -42,31 +45,23 @@ export default function Dashboard() {
     manager: "",
   })
 
-  // Initialize currentOrgId on client side only
+  // Initialize organization on client side
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      let storedOrgId = window.localStorage.getItem("current_org_id") || ""
+      const storedOrgId = window.localStorage.getItem("current_org_id") || ""
       
-      // Check if stored org_id is valid UUID format
-      if (storedOrgId && !isValidUUID(storedOrgId)) {
-        console.log(`Invalid UUID format found: ${storedOrgId}, generating new one`)
-        storedOrgId = generateUUID()
-        window.localStorage.setItem("current_org_id", storedOrgId)
+      if (storedOrgId && isValidUUID(storedOrgId)) {
+        setCurrentOrgId(storedOrgId)
+        // Fetch organization details
+        fetchOrganizationDetails(storedOrgId)
+      } else {
+        setShowOrgSetup(true)
+        setLoading(false)
       }
-      
-      setCurrentOrgId(storedOrgId)
     }
   }, [])
 
-  const debugInfo = {
-    showProjectDetail,
-    showClientView,
-    showAddProject,
-    selectedProject: selectedProject?.project_title || 'null',
-    projectsCount: projects.length,
-    loading,
-    currentOrgId
-  }
+
 
   useEffect(() => {
     if (currentOrgId) {
@@ -78,12 +73,35 @@ export default function Dashboard() {
     filterProjects()
   }, [projects, searchTerm, filters])
 
+  const fetchOrganizationDetails = async (orgId) => {
+    try {
+      const response = await fetch('/api/organizations')
+      if (response.ok) {
+        const organizations = await response.json()
+        const currentOrg = organizations.find(org => 
+          org.organizations.id === orgId
+        )
+        if (currentOrg) {
+          setCurrentOrganization(currentOrg.organizations)
+        } else {
+          // Organization not found, show setup
+          setShowOrgSetup(true)
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching organization details:", error)
+      setShowOrgSetup(true)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const fetchProjects = async () => {
     try {
       // Get org_id from state
       const orgId = currentOrgId
       
-      console.log("Fetching projects with org_id:", orgId) // Debug log
+
       
       if (!orgId) {
         console.error("No organization ID found. User must belong to an organization.")
@@ -103,7 +121,7 @@ export default function Dashboard() {
       }
 
       const url = `/api/projects?org_id=${orgId}`
-      console.log("Making request to:", url) // Debug log
+
       
       const response = await fetch(url, {
         method: "GET",
@@ -113,8 +131,7 @@ export default function Dashboard() {
         },
       })
 
-      console.log("Response status:", response.status) // Debug log
-      console.log("Response ok:", response.ok) // Debug log
+
 
       if (!response.ok) {
         const errorData = await response.text()
@@ -128,7 +145,7 @@ export default function Dashboard() {
       }
       
       const data = await response.json()
-      console.log("Received data:", data) // Debug log
+
       setProjects(data || [])
       
     } catch (error) {
@@ -211,12 +228,12 @@ export default function Dashboard() {
     setShowAddProject(false)
   }
 
-  // Function to set up organization with proper UUID
-  const setupOrganization = () => {
-    const newOrgId = generateUUID()
-    window.localStorage.setItem("current_org_id", newOrgId)
-    setCurrentOrgId(newOrgId)
-    console.log("Generated new org_id:", newOrgId)
+  const handleOrganizationSet = (organization) => {
+    setCurrentOrganization(organization)
+    setCurrentOrgId(organization.id)
+    setShowOrgSetup(false)
+    setLoading(true)
+    // Will trigger fetchProjects via useEffect
   }
 
   if (loading) {
@@ -228,58 +245,15 @@ export default function Dashboard() {
     )
   }
 
-  // Show organization selection if no org_id
-  if (!currentOrgId) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="bg-white rounded-lg shadow-lg p-8 max-w-md w-full mx-4">
-          <h2 className="text-2xl font-semibold text-gray-900 mb-4">Select Organization</h2>
-          <p className="text-gray-600 mb-6">
-            You need to select an organization to view the dashboard.
-          </p>
-          <div className="space-y-3">
-            <button 
-              className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-              onClick={setupOrganization}
-            >
-              Generate Organization ID
-            </button>
-            <button 
-              className="w-full px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50"
-              onClick={() => {
-                alert("Navigate to create organization page")
-              }}
-            >
-              Create New Organization
-            </button>
-          </div>
-          
-          {/* Debug info for development */}
-          <div className="mt-6 p-3 bg-gray-50 rounded text-xs text-gray-600">
-            <strong>Debug Info:</strong>
-            <pre>{JSON.stringify(debugInfo, null, 2)}</pre>
-          </div>
-        </div>
-      </div>
-    )
+  // Show organization setup if needed
+  if (showOrgSetup) {
+    return <OrganizationSetup onOrganizationSet={handleOrganizationSet} />
   }
 
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-8 py-8">
-        {/* Organization ID Display for debugging */}
-        <div className="mb-4 p-2 bg-blue-50 rounded text-sm text-blue-700">
-          <strong>Current Organization ID:</strong> {currentOrgId}
-          <button 
-            onClick={() => {
-              navigator.clipboard.writeText(currentOrgId)
-              alert("Organization ID copied to clipboard!")
-            }}
-            className="ml-2 text-xs bg-blue-200 px-2 py-1 rounded hover:bg-blue-300"
-          >
-            Copy
-          </button>
-        </div>
+
 
         <h2 className="text-2xl font-semibold text-gray-900 mb-6">Business Overview</h2>
         <SummaryCards projects={projects} />

@@ -25,7 +25,7 @@ export function ProgressUpdateModal({ isOpen, onClose, phaseData, onUpdate }) {
         remarks: remarks.trim() || null
       });
 
-      console.log('Progress saved successfully:', response.data);
+      // Progress saved successfully
       
       // Update parent component (local state)
       if (onUpdate) {

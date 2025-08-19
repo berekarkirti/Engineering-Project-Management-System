@@ -410,7 +410,7 @@ export default function ProjectEditModal({ isOpen, onClose, projectData, onUpdat
 
 const handleUpdateProject = async () => {
   try {
-    console.log('Starting project update...');
+    // Starting project update
     setUploadStatus("🔄 Updating project and uploading files...");
     
     // Validate required fields
@@ -450,7 +450,7 @@ const handleUpdateProject = async () => {
       scope: formData.scope || [],
     };
 
-    console.log('Update payload:', updatePayload);
+    // Sending update payload
 
     // Make API call to update project
     const response = await fetch('/api/projects', {
@@ -467,7 +467,7 @@ const handleUpdateProject = async () => {
     }
 
     const updatedProject = await response.json();
-    console.log('API response:', updatedProject);
+    // Project updated successfully
 
     // Update equipment data if needed
     await updateEquipmentData(projectData.id);
@@ -510,9 +510,9 @@ const handleUpdateProject = async () => {
             }),
           });
           
-          console.log(`✅ Uploaded project document: ${file.name}`);
+          // Project document uploaded successfully
         } else {
-          console.error(`❌ Failed to upload project document: ${file.name}`);
+          // Failed to upload project document
         }
       } catch (err) {
         console.error('Project document upload error:', err);
@@ -550,9 +550,9 @@ const handleUpdateProject = async () => {
               }),
             });
             
-            console.log(`✅ Uploaded other document: ${file.name}`);
+            // Other document uploaded successfully
           } else {
-            console.error(`❌ Failed to upload other document: ${file.name}`);
+            // Failed to upload other document
           }
         } catch (err) {
           console.error('Other document upload error:', err);
@@ -585,7 +585,7 @@ const handleUpdateProject = async () => {
           
           if (uploadRes.ok) {
             const { url } = await uploadRes.json();
-            console.log(`✅ Uploaded equipment document for ${type}: ${data.details.documentFile.name}`);
+            // Equipment document uploaded successfully
           }
         } catch (err) {
           console.error(`Equipment document upload error for ${type}:`, err);
@@ -611,7 +611,7 @@ const handleUpdateProject = async () => {
           
           if (uploadRes.ok) {
             const { url } = await uploadRes.json();
-            console.log(`✅ Uploaded equipment document for ${item.name}: ${item.details.documentFile.name}`);
+            // Custom equipment document uploaded successfully
           }
         } catch (err) {
           console.error(`Custom equipment document upload error for ${item.name}:`, err);
@@ -675,9 +675,9 @@ const updateEquipmentData = async (projectId) => {
       });
 
       if (response.ok) {
-        console.log(`✅ Updated equipment: ${item.type}`);
+        // Equipment updated successfully
       } else {
-        console.error(`❌ Failed to update equipment: ${item.type}`);
+        // Failed to update equipment
       }
     }
   } catch (error) {

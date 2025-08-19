@@ -1,6 +1,7 @@
 import Script from "next/script"
 import "./globals.css"
 import SessionProvider from "@/components/SessionProvider"
+import ErrorBoundary from "@/components/ErrorBoundary"
 
 export const metadata = {
   title: "Engineering Project Management System",
@@ -15,9 +16,11 @@ export default function RootLayout({ children }) {
           src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"
           strategy="beforeInteractive"
         />
-        <SessionProvider>
-          {children}
-        </SessionProvider>
+        <ErrorBoundary>
+          <SessionProvider>
+            {children}
+          </SessionProvider>
+        </ErrorBoundary>
       </body>
     </html>
   )
