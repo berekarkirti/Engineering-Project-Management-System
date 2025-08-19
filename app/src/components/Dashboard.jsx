@@ -244,14 +244,12 @@ export default function Dashboard() {
             >
               Generate Organization ID
             </button>
-            <button 
-              className="w-full px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50"
-              onClick={() => {
-                alert("Navigate to create organization page")
-              }}
+            <a 
+              className="block text-center w-full px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50"
+              href="/organizations/new"
             >
               Create New Organization
-            </button>
+            </a>
           </div>
           
           {/* Debug info for development */}

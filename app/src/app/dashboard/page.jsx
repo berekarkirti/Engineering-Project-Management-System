@@ -1,13 +1,7 @@
-import Dashboard from "@/components/Dashboard";
-import Topbar from "@/components/Topbar";
+"use client";
 
+import Dashboard from "@/components/Dashboard";
 
 export default function Home() {
-
-    return (
-        <>
-            <Topbar />
-            <Dashboard />
-        </>
-    )
+  return <Dashboard />
 }
